@@ -1,5 +1,7 @@
 "use client";
 
+import toast from "react-hot-toast";
+
 import type { DeviceInfo, TransferItem } from "@/lib/types";
 import { FileDropzone } from "@/components/file-dropzone";
 import { formatBytes } from "@/lib/helpers";
@@ -12,6 +14,9 @@ type TransferPanelProps = {
   onDraftMessageChange: (value: string) => void;
   onSendMessage: () => void;
   onFilesSelected: (files: FileList) => void;
+  queuedFiles: File[];
+  onSendFiles: () => void;
+  onClearFiles: () => void;
   canSend: boolean;
 };
 
@@ -22,6 +27,28 @@ function formatTime(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
+async function copyTextValue(text: string) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.opacity = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const didCopy = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    return didCopy;
+  } catch {
+    return false;
+  }
+}
+
 export function TransferPanel({
   device,
   currentDeviceId,
@@ -30,6 +57,9 @@ export function TransferPanel({
   onDraftMessageChange,
   onSendMessage,
   onFilesSelected,
+  queuedFiles,
+  onSendFiles,
+  onClearFiles,
   canSend
 }: TransferPanelProps) {
   const title = device ? device.name : "Select a device";
@@ -77,7 +107,25 @@ export function TransferPanel({
                   >
                     <div className="mb-1 flex items-center justify-between gap-3 text-xs text-ink-500">
                       <span>{isFromMe ? "You" : item.fromName}</span>
-                      <span>{formatTime(item.createdAt)}</span>
+                      <div className="flex items-center gap-2">
+                        {item.kind === "text" ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const copied = await copyTextValue(item.text);
+                              if (copied) {
+                                toast.success("Copied message");
+                              } else {
+                                toast.error("Copy failed");
+                              }
+                            }}
+                            className="rounded-full border border-ink-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-ink-700 transition hover:border-ink-300 hover:bg-ink-50"
+                          >
+                            Copy
+                          </button>
+                        ) : null}
+                        <span>{formatTime(item.createdAt)}</span>
+                      </div>
                     </div>
 
                     {item.kind === "text" ? (
@@ -106,7 +154,13 @@ export function TransferPanel({
           </div>
 
           <div className="space-y-4 border-t border-ink-200 bg-ink-50 p-4">
-            <FileDropzone disabled={!canSend} onFilesSelected={onFilesSelected} />
+            <FileDropzone
+              disabled={!canSend}
+              onFilesSelected={onFilesSelected}
+              queuedFiles={queuedFiles}
+              onSendFiles={onSendFiles}
+              onClearFiles={onClearFiles}
+            />
 
             <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
               <label className="block text-sm font-medium text-ink-700" htmlFor="localdrop-message">

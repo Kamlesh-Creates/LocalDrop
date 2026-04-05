@@ -57,6 +57,7 @@ export default function HomePage() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [transfersByDevice, setTransfersByDevice] = useState<Record<string, TransferItem[]>>({});
+  const [queuedFilesByDevice, setQueuedFilesByDevice] = useState<Record<string, File[]>>({});
   const previousDeviceIds = useRef<string[]>([]);
   const latestDevicesRef = useRef<DeviceInfo[]>([]);
 
@@ -186,6 +187,7 @@ export default function HomePage() {
   );
 
   const activeTransfers = selectedDeviceId ? transfersByDevice[selectedDeviceId] ?? [] : [];
+  const queuedFiles = selectedDeviceId ? queuedFilesByDevice[selectedDeviceId] ?? [] : [];
 
   async function handleSendMessage() {
     if (!selectedDevice || !draftMessage.trim()) {
@@ -245,12 +247,50 @@ export default function HomePage() {
       return;
     }
 
-    for (const file of Array.from(files)) {
+    const pickedFiles = Array.from(files).filter((file) => {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         toast.error(`${file.name} is too large. Max size is ${MAX_FILE_SIZE_MB} MB.`);
-        continue;
+        return false;
       }
 
+      return true;
+    });
+
+    if (pickedFiles.length === 0) {
+      return;
+    }
+
+    setQueuedFilesByDevice((current) => ({
+      ...current,
+      [selectedDevice.id]: [...(current[selectedDevice.id] ?? []), ...pickedFiles]
+    }));
+
+    toast.success(`${pickedFiles.length} file(s) queued for ${selectedDevice.name}.`);
+  }
+
+  async function handleSendQueuedFiles() {
+    if (!selectedDevice) {
+      toast.error("Select a device first.");
+      return;
+    }
+
+    const socket = getSocket();
+
+    if (!socket.connected || !currentDeviceId) {
+      toast.error("Connect to the local network first.");
+      return;
+    }
+
+    const filesToSend = queuedFilesByDevice[selectedDevice.id] ?? [];
+
+    if (filesToSend.length === 0) {
+      toast.error("No files queued.");
+      return;
+    }
+
+    let sentCount = 0;
+
+    for (const file of filesToSend) {
       let dataUrl = "";
 
       try {
@@ -273,31 +313,53 @@ export default function HomePage() {
         kind: "file"
       };
 
-      emitFileWithAck(
-        {
-          id: payload.id,
-          toId: payload.toId,
-          fileName: payload.fileName,
-          mimeType: payload.mimeType,
-          size: payload.size,
-          dataUrl: payload.dataUrl,
-          createdAt: payload.createdAt
-        },
-        (ack) => {
-          if (!ack.ok) {
-            toast.error(ack.error ?? `Unable to send ${file.name}.`);
-            return;
-          }
+      const ack = await new Promise<SendAck>((resolve) => {
+        emitFileWithAck(
+          {
+            id: payload.id,
+            toId: payload.toId,
+            fileName: payload.fileName,
+            mimeType: payload.mimeType,
+            size: payload.size,
+            dataUrl: payload.dataUrl,
+            createdAt: payload.createdAt
+          },
+          resolve
+        );
+      });
 
-          setTransfersByDevice((current) => ({
-            ...current,
-            [selectedDevice.id]: mergeTransfers(current[selectedDevice.id] ?? [], payload)
-          }));
+      if (!ack.ok) {
+        toast.error(ack.error ?? `Unable to send ${file.name}.`);
+        continue;
+      }
 
-          toast.success(`${file.name} sent`);
-        }
-      );
+      sentCount += 1;
+
+      setTransfersByDevice((current) => ({
+        ...current,
+        [selectedDevice.id]: mergeTransfers(current[selectedDevice.id] ?? [], payload)
+      }));
     }
+
+    setQueuedFilesByDevice((current) => ({
+      ...current,
+      [selectedDevice.id]: []
+    }));
+
+    if (sentCount > 0) {
+      toast.success(`${sentCount} file(s) sent`);
+    }
+  }
+
+  function handleClearQueuedFiles() {
+    if (!selectedDevice) {
+      return;
+    }
+
+    setQueuedFilesByDevice((current) => ({
+      ...current,
+      [selectedDevice.id]: []
+    }));
   }
 
   function handleDeviceNameChange(nextName: string) {
@@ -345,6 +407,9 @@ export default function HomePage() {
           onDraftMessageChange={setDraftMessage}
           onSendMessage={handleSendMessage}
           onFilesSelected={handleFilesSelected}
+          queuedFiles={queuedFiles}
+          onSendFiles={handleSendQueuedFiles}
+          onClearFiles={handleClearQueuedFiles}
           canSend={Boolean(selectedDevice && currentDeviceId && connectionStatus === "connected")}
         />
       </div>
