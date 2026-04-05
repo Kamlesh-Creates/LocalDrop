@@ -1,0 +1,29 @@
+{
+  "name": "localdrop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development tsx watch server/index.ts",
+    "build": "next build",
+    "start": "cross-env NODE_ENV=production tsx server/index.ts"
+  },
+  "dependencies": {
+    "next": "16.2.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-hot-toast": "2.5.2",
+    "socket.io": "4.8.1",
+    "socket.io-client": "4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.21",
+    "cross-env": "^10.0.0",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.0"
+  }
+}
